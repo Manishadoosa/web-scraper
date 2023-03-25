@@ -1,0 +1,73 @@
+import requests
+from bs4 import BeautifulSoup
+import csv
+import sqlite3
+from datetime import datetime
+
+# Define the URL of theverge.com and the date format for the output files
+url = 'https://www.theverge.com/'
+date_format = '%d%m%Y'
+
+# Define the headers for the CSV file
+csv_headers = ['id', 'URL', 'headline', 'author', 'date']
+
+# Define the name of the SQLite database
+sqlite_db_name = 'theverge.db'
+
+# Connect to the SQLite database and create the articles table if it doesn't exist
+conn = sqlite3.connect(sqlite_db_name)
+c = conn.cursor()
+c.execute('''CREATE TABLE IF NOT EXISTS articles
+             (id INTEGER PRIMARY KEY,
+              url TEXT,
+              headline TEXT,
+              author TEXT,
+              date TEXT)''')
+conn.commit()
+
+# Define a function to scrape the articles and store them in the CSV and SQLite files
+def scrape_articles():
+    # Get the HTML content of theverge.com
+    response = requests.get(url)
+    soup = BeautifulSoup(response.content, 'html.parser')
+    
+    # Find all the articles on the page
+    articles = soup.find_all('article')
+    
+    # Get the current date
+    now = datetime.now()
+    date_string = now.strftime(date_format)
+    
+    # Define the name of the CSV file
+    csv_file_name = f'{date_string}_verge.csv'
+    
+    # Open the CSV file and write the headers
+    with open(csv_file_name, mode='w', newline='', encoding='utf-8') as csv_file:
+        writer = csv.writer(csv_file)
+        writer.writerow(csv_headers)
+        
+        # Loop through the articles and write them to the CSV and SQLite files
+        for i, article in enumerate(articles):
+            # Get the headline and URL of the article
+            headline = article.find('h2').text.strip()
+            url = article.find('a')['href']
+            
+            # Get the author and date of the article
+            byline = article.find('div', {'class': 'c-byline'})
+            author = byline.find('a').text.strip()
+            date = byline.find('time')['datetime'][:10]
+            
+            # Write the article to the CSV file
+            writer.writerow([i, url, headline, author, date])
+            
+            # Insert the article into the SQLite database
+            c.execute('''INSERT OR IGNORE INTO articles
+                         (id, url, headline, author, date)
+                         VALUES (?, ?, ?, ?, ?)''',
+                      (i, url, headline, author, date))
+    
+    # Commit the changes to the SQLite database
+    conn.commit()
+
+# Call the scrape_articles function
+scrape_articles()
